@@ -1,0 +1,25 @@
+{
+  "name": "screen-live",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Reunião por vídeo com compartilhamento de tela, no estilo Meet, com SFU mediasoup",
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
+  "scripts": {
+    "dev": "concurrently -k -n backend,frontend -c blue,green \"npm run dev -w backend\" \"npm run dev -w frontend\"",
+    "build": "npm run build -w backend && npm run build -w frontend",
+    "start": "npm run start -w backend",
+    "typecheck": "npm run typecheck -w backend && npm run typecheck -w frontend",
+    "test:signaling": "npm run test:signaling -w backend",
+    "test:e2e": "node e2e/chrome-e2e.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.5",
+    "typescript": "^5.9.3"
+  }
+}

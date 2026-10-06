@@ -1,0 +1,43 @@
+# Produção: `docker compose up -d --build`
+# Crie um .env ao lado deste arquivo (veja deploy/.env.server.example) com pelo menos MEDIASOUP_ANNOUNCED_IP.
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    environment:
+      PORT: "3005"
+      HOST: "0.0.0.0"
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      # STUN entregue aos navegadores (opcional); TURN pode ser adicionado aqui se necessário.
+      ICE_SERVERS: ${ICE_SERVERS:-}
+      MAX_ROOMS: ${MAX_ROOMS:-1000}
+      MAX_PARTICIPANTS_PER_ROOM: ${MAX_PARTICIPANTS_PER_ROOM:-50}
+      EMPTY_ROOM_GRACE_MS: ${EMPTY_ROOM_GRACE_MS:-10000}
+      # Integração (ex.: Flexi): API_TOKEN habilita a API REST; PUBLIC_URL deixa os links absolutos.
+      API_TOKEN: ${API_TOKEN:-}
+      PUBLIC_URL: ${PUBLIC_URL:-}
+      # IP público real do servidor (não o do Cloudflare): é por ele que os navegadores enviam a mídia.
+      MEDIASOUP_ANNOUNCED_IP: ${MEDIASOUP_ANNOUNCED_IP:?defina MEDIASOUP_ANNOUNCED_IP no .env com o IP publico do servidor}
+      MEDIASOUP_RTC_MIN_PORT: "40000"
+      MEDIASOUP_RTC_MAX_PORT: "40100"
+    ports:
+      - "40000-40100:40000-40100/udp"
+      - "40000-40100:40000-40100/tcp"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3005/health').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    ports:
+      # Única porta HTTP publicada: site, /ws e /api passam por aqui. Coloque o proxy reverso/TLS na frente.
+      - "${WEB_PORT:-3012}:80"
+    depends_on:
+      - backend
+    restart: unless-stopped

@@ -1,0 +1,25 @@
+{
+  "name": "@screen-live/backend",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/backend/src/server.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test:signaling": "tsx test/signaling.test.ts"
+  },
+  "dependencies": {
+    "@fastify/websocket": "^11.3.3",
+    "fastify": "^5.12.5",
+    "mediasoup": "^3.28.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.4",
+    "@types/ws": "^8.18.2",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "ws": "^8.22.0"
+  }
+}
