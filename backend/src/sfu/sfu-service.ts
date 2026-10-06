@@ -1,5 +1,5 @@
 import * as mediasoup from 'mediasoup';
-import type { Consumer, Producer, Router, WebRtcTransport, Worker } from 'mediasoup/types';
+import type { Consumer, Producer, Router, WebRtcServer, WebRtcTransport, Worker } from 'mediasoup/types';
 import type { MediaPurpose, SfuProducerInfo, SfuRequest } from '../../../shared/protocol.js';
 import type { AppConfig } from '../config.js';
 
@@ -25,9 +25,11 @@ const MEDIA_CODECS: NonNullable<mediasoup.types.RouterOptions['mediaCodecs']> = 
 /**
  * SFU com mediasoup: um Router por sala, transports/producers/consumers por participante.
  * Só repassa pacotes já cifrados pelo navegador de origem; não decodifica nada.
+ * Todos os transports compartilham um WebRtcServer em uma única porta UDP/TCP.
  */
 export class SfuService {
   private worker: Worker | null = null;
+  private webRtcServer: WebRtcServer | null = null;
   private readonly rooms = new Map<string, SfuRoom>();
 
   constructor(
@@ -40,21 +42,31 @@ export class SfuService {
   }
 
   async start(): Promise<void> {
-    this.worker = await mediasoup.createWorker({
+    const worker = await mediasoup.createWorker({
       logLevel: 'warn',
-      rtcMinPort: this.config.rtcMinPort,
-      rtcMaxPort: this.config.rtcMaxPort,
+      rtcMinPort: this.config.rtcPort,
+      rtcMaxPort: this.config.rtcPort,
     });
-    this.worker.on('died', (error) => {
+    worker.on('died', (error) => {
       this.log.error({ err: error }, 'mediasoup worker morreu; SFU indisponível até reiniciar');
       this.worker = null;
+      this.webRtcServer = null;
       for (const roomId of [...this.rooms.keys()]) this.closeRoom(roomId);
     });
-    this.log.info({ ports: `${this.config.rtcMinPort}-${this.config.rtcMaxPort}`, announcedIp: this.config.announcedIp }, 'mediasoup worker started');
+    this.webRtcServer = await worker.createWebRtcServer({
+      listenInfos: [
+        { protocol: 'udp', ip: this.config.listenIp, announcedAddress: this.config.announcedIp, port: this.config.rtcPort },
+        { protocol: 'tcp', ip: this.config.listenIp, announcedAddress: this.config.announcedIp, port: this.config.rtcPort },
+      ],
+    });
+    this.worker = worker;
+    this.log.info({ port: this.config.rtcPort, announcedIp: this.config.announcedIp }, 'mediasoup worker started');
   }
 
   async stop(): Promise<void> {
     for (const roomId of [...this.rooms.keys()]) this.closeRoom(roomId);
+    this.webRtcServer?.close();
+    this.webRtcServer = null;
     this.worker?.close();
     this.worker = null;
   }
@@ -82,11 +94,9 @@ export class SfuService {
         return { data: { rtpCapabilities: room.router.rtpCapabilities, producers: this.producersOf(roomId, peerId) } };
 
       case 'create-transport': {
+        if (!this.webRtcServer) throw new SfuError('SFU indisponível.');
         const transport = await room.router.createWebRtcTransport({
-          listenInfos: [
-            { protocol: 'udp', ip: this.config.listenIp, announcedAddress: this.config.announcedIp },
-            { protocol: 'tcp', ip: this.config.listenIp, announcedAddress: this.config.announcedIp },
-          ],
+          webRtcServer: this.webRtcServer,
           enableUdp: true,
           enableTcp: true,
           preferUdp: true,

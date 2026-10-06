@@ -205,34 +205,52 @@ docker compose up -d --build
 
 - Site em <http://localhost:3012> (`WEB_PORT` para trocar).
 - O Nginx do container `frontend` serve o SPA e faz proxy de `/ws`, `/api` e `/health` para o `backend`.
-- O `backend` publica as portas RTC do mediasoup (40000–40100, UDP e TCP) e exige `MEDIASOUP_ANNOUNCED_IP`,
-  o IP pelo qual os navegadores alcançam o servidor (IP público na internet, IP da máquina na LAN).
+- O `backend` publica **uma única porta de mídia** (`MEDIASOUP_RTC_PORT`, padrão 40000, UDP e TCP) e exige
+  `MEDIASOUP_ANNOUNCED_IP`, o endereço pelo qual os navegadores alcançam a mídia (IP do balanceador, IP público
+  do servidor ou IP da máquina na LAN).
 - Sem o IP anunciado correto, a sinalização funciona mas a mídia não chega.
 
 ## Instalação no servidor (porta 3012)
 
 1. Pré-requisitos: Docker com Compose, um domínio apontando para o servidor (ex.: `live.exemplo.com`)
-   e as portas liberadas no firewall: 80/443 (proxy reverso) e **40000–40100 UDP e TCP** (mídia).
+   e as portas liberadas: 80/443 (proxy reverso) e **40000 UDP e TCP** (mídia).
    A porta 3012 só precisa ser alcançável pelo proxy reverso local.
 2. No servidor, dentro da pasta do projeto, crie o `.env` a partir de `deploy/.env.server.example`:
-   `WEB_PORT=3012`, `MEDIASOUP_ANNOUNCED_IP` com o IP público real, `API_TOKEN` (ex.: `openssl rand -hex 32`)
-   e `PUBLIC_URL=https://live.exemplo.com`.
+   `WEB_PORT=3012`, `MEDIASOUP_ANNOUNCED_IP` (veja a seção da AWS abaixo), `API_TOKEN`
+   (ex.: `openssl rand -hex 32`) e `PUBLIC_URL=https://live.exemplo.com`.
 3. Suba: `docker compose up -d --build`. Confira: `curl http://127.0.0.1:3012/health` deve responder
    `{"ok":true,...,"sfu":true}`.
 4. Configure o proxy reverso com TLS na frente da 3012; `deploy/reverse-proxy.nginx.conf` é um exemplo
    pronto para Nginx (o essencial é o upgrade de WebSocket em `/ws` e timeouts longos).
 5. Se usar Cloudflare como proxy do domínio: o tráfego HTTP/WebSocket passa por ele normalmente, mas a
-   mídia **não**. `MEDIASOUP_ANNOUNCED_IP` deve ser o IP real do servidor e as portas 40000–40100 ficam
-   abertas direto nele.
+   mídia **não**. `MEDIASOUP_ANNOUNCED_IP` deve ser um endereço que receba UDP/TCP direto, nunca o do Cloudflare.
 6. Atualizações: `git pull && docker compose up -d --build`. Logs: `docker compose logs -f backend`.
 
 A URL para o Flexi é a do domínio, por exemplo `https://live.exemplo.com/live/{código}`; a API fica em
 `https://live.exemplo.com/api/rooms` com o `API_TOKEN` do `.env`.
 
+### AWS com instância privada (sem IP público)
+
+A mídia precisa de um endereço público que receba UDP/TCP, mas ele não precisa ser da instância. Um
+Network Load Balancer com IP elástico encaminha a porta de mídia para a instância em sub-rede privada:
+
+1. **Elastic IP** para o NLB (um por zona de disponibilidade usada).
+2. **NLB internet-facing** com um listener **TCP_UDP** na porta 40000 apontando para um *target group*
+   do tipo instância, protocolo TCP_UDP, porta 40000, com a instância do Screen Live como alvo.
+   Health check: HTTP na porta 3012, caminho `/health`.
+3. **Security group da instância**: entrada TCP e UDP 40000 (origem `0.0.0.0/0`, pois o NLB preserva o IP
+   do cliente) e TCP 3012 a partir do proxy reverso/ALB que serve o site.
+4. No `.env`: `MEDIASOUP_ANNOUNCED_IP` = IP elástico do NLB e `MEDIASOUP_RTC_PORT=40000`. A porta
+   anunciada e a porta do listener precisam ser iguais.
+5. O site e o WebSocket continuam pelo caminho HTTP de sempre (ALB/Cloudflare → porta 3012). Só a mídia
+   entra pelo NLB.
+
+Uma porta só é suficiente: o mediasoup multiplexa todos os participantes nela (modo `WebRtcServer`).
+
 ## Produção com HTTPS
 
 `getDisplayMedia` e `getUserMedia` só funcionam em contexto seguro. Coloque um terminador TLS (Cloudflare, Nginx, Traefik, Caddy)
-na frente da porta 3012 do compose. O tráfego RTC do mediasoup (UDP/TCP 40000–40100) vai direto ao servidor, fora do proxy. O frontend conecta em `wss://<mesma origem>/ws` automaticamente.
+na frente da porta 3012 do compose. O tráfego de mídia do mediasoup (UDP/TCP 40000) vai direto ao servidor ou ao NLB, fora do proxy. O frontend conecta em `wss://<mesma origem>/ws` automaticamente.
 O proxy precisa repassar WebSocket (`Upgrade`/`Connection: upgrade`) na rota `/ws` e manter conexões ociosas abertas
 por pelo menos 60 s (o heartbeat do servidor é de 25 s).
 
@@ -251,7 +269,7 @@ Se o backend ficar em outro domínio, construa o frontend com `VITE_WS_URL=wss:/
 5. Com `?debug=1`, o painel mostra os transports `sfu:send` e `sfu:recv` conectados, codec, bitrate e RTT até o servidor.
    Também é possível conferir em `chrome://webrtc-internals`.
 6. Nenhuma porta precisa ser aberta nos roteadores dos participantes: todos conectam de saída ao servidor.
-   As portas abertas ficam só no servidor (HTTPS e a faixa RTC do mediasoup).
+   As portas abertas ficam só no servidor ou no balanceador (HTTPS e a porta de mídia do mediasoup).
 
 ## Comportamentos de resiliência
 

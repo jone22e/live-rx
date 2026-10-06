@@ -120,10 +120,7 @@ async function startServer(extraEnv: Record<string, string>): Promise<{ child: C
       HOST: '127.0.0.1',
       LOG_LEVEL: 'warn',
       EMPTY_ROOM_GRACE_MS: String(GRACE_MS),
-      ...(() => {
-        const min = 41000 + Math.floor(Math.random() * 400) * 10;
-        return { MEDIASOUP_RTC_MIN_PORT: String(min), MEDIASOUP_RTC_MAX_PORT: String(min + 9) };
-      })(),
+      MEDIASOUP_RTC_PORT: String(41000 + Math.floor(Math.random() * 4000)),
       ...extraEnv,
     },
     stdio: ['ignore', 'inherit', 'inherit'],
@@ -192,6 +189,8 @@ async function run(): Promise<void> {
     const transportData = transport.ok ? (transport.data as { id: string; iceParameters: object; iceCandidates: Array<{ ip: string }>; dtlsParameters: object }) : null;
     assert(!!transportData?.id && !!transportData.iceParameters && transportData.iceCandidates.length > 0 && !!transportData.dtlsParameters, 'transport params returned');
     assert(transportData?.iceCandidates.every((c) => c.ip !== '0.0.0.0'), `announced ip is routable (${transportData?.iceCandidates[0]?.ip})`);
+    const ports = new Set(transportData?.iceCandidates.map((c) => (c as { port: number }).port));
+    assert(ports.size === 1, `single media port shared by udp and tcp (${[...ports].join(',')})`);
     bruno.send({ type: 'sfu-request', requestId: 'r3', request: { action: 'connect-transport', transportId: transportData?.id ?? '', dtlsParameters: { role: 'client', fingerprints: [] } } });
     assert((await bruno.expect('sfu-response')).ok === false, 'invalid dtls parameters answered with an error, server keeps running');
     bruno.send({ type: 'sfu-request', requestId: 'r4', request: { action: 'consume', producerId: 'nope', rtpCapabilities: {} } });

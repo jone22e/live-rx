@@ -22,8 +22,8 @@ export interface AppConfig {
     listenIp: string;
     /** IP anunciado aos navegadores: MEDIASOUP_ANNOUNCED_IP (obrigatório atrás de NAT/Docker) ou o IP da máquina. */
     announcedIp: string;
-    rtcMinPort: number;
-    rtcMaxPort: number;
+    /** Porta única de mídia (UDP e TCP) para todos os participantes; facilita firewall e balanceador. */
+    rtcPort: number;
   };
 }
 
@@ -100,8 +100,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     sfu: {
       listenIp: env.MEDIASOUP_LISTEN_IP?.trim() || '0.0.0.0',
       announcedIp: env.MEDIASOUP_ANNOUNCED_IP?.trim() || detectLocalIp(),
-      rtcMinPort: readInt(env, 'MEDIASOUP_RTC_MIN_PORT', 40000),
-      rtcMaxPort: readInt(env, 'MEDIASOUP_RTC_MAX_PORT', 40100),
+      rtcPort: readInt(env, 'MEDIASOUP_RTC_PORT', 40000),
     },
   };
 }

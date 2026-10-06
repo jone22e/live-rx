@@ -20,6 +20,6 @@ RUN npm ci --workspace backend --omit=dev --include-workspace-root=false && npm 
 COPY --from=build /app/backend/dist backend/dist
 USER node
 EXPOSE 3005
-# Portas RTC do mediasoup (UDP e TCP), alinhadas com MEDIASOUP_RTC_MIN_PORT/MAX_PORT
-EXPOSE 40000-40100/udp 40000-40100/tcp
+# Porta única de mídia do mediasoup (UDP e TCP), alinhada com MEDIASOUP_RTC_PORT
+EXPOSE 40000/udp 40000/tcp
 CMD ["node", "backend/dist/backend/src/server.js"]
