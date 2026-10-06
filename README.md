@@ -219,7 +219,9 @@ docker compose up -d --build
    `WEB_PORT=3012`, `MEDIASOUP_ANNOUNCED_IP` (veja a seção da AWS abaixo), `API_TOKEN`
    (ex.: `openssl rand -hex 32`) e `PUBLIC_URL=https://live.exemplo.com`.
 3. Suba: `docker compose up -d --build`. Confira: `curl http://127.0.0.1:3012/health` deve responder
-   `{"ok":true,...,"sfu":true}`.
+   `{"ok":true,...,"sfu":true}`. A primeira construção pode levar vários minutos: se o worker pré-compilado
+   do mediasoup não rodar no host, o instalador compila o worker do zero dentro da etapa de build
+   (a imagem já traz Python e compilador para isso). As seguintes usam o cache.
 4. Configure o proxy reverso com TLS na frente da 3012; `deploy/reverse-proxy.nginx.conf` é um exemplo
    pronto para Nginx (o essencial é o upgrade de WebSocket em `/ws` e timeouts longos).
 5. Se usar Cloudflare como proxy do domínio: o tráfego HTTP/WebSocket passa por ele normalmente, mas a
