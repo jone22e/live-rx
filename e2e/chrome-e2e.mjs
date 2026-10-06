@@ -18,7 +18,8 @@ const chrome = await launchChrome();
 const results = [];
 const ok = (name, cond, extra = '') => { results.push(`${cond ? 'ok  ' : 'FAIL'} ${name} ${extra}`); if (!cond) throw new Error(`FAIL ${name} ${extra}`); };
 const hasBtn = (t) => `!![...document.querySelectorAll('button')].find(b => b.textContent.trim() === ${JSON.stringify(t)} || b.getAttribute('aria-label') === ${JSON.stringify(t)})`;
-const captions = `[...document.querySelectorAll('.tile figcaption')].map(f => f.textContent).join('|')`;
+/** Nomes dos tiles em ordem alfabética: as posições são estáveis (quem já está não se move quando alguém entra). */
+const captions = `[...document.querySelectorAll('.tile figcaption')].map(f => f.textContent).sort().join('|')`;
 const tilesWithVideo = `[...document.querySelectorAll('.tile')].filter(t => t.querySelector('video').videoWidth > 0).length`;
 const people = `document.querySelector('.people .count')?.textContent.trim()`;
 const presentationLabel = `document.querySelector('.presentation-label')?.textContent.trim() ?? ''`;
@@ -85,8 +86,8 @@ try {
   ok('viewer sees room name', (await B.eval(`document.querySelector('.header h1')?.textContent`)) === 'Revisão de sprint');
   await A.waitFor(`${people} === '2'`, 10000, 'people 2');
   ok('creator counts 2 people', true);
-  ok('creator grid lists Bruno then self', (await A.eval(captions)) === 'Bruno Lima|Ana Souza (você)', await A.eval(captions));
-  ok('viewer grid lists Ana then self', (await B.eval(captions)) === 'Ana Souza|Bruno Lima (você)', await B.eval(captions));
+  ok('creator grid lists Bruno and self', (await A.eval(captions)) === 'Ana Souza (você)|Bruno Lima', await A.eval(captions));
+  ok('viewer grid lists Ana and self', (await B.eval(captions)) === 'Ana Souza|Bruno Lima (você)', await B.eval(captions));
   const muteBadges = await A.eval(`[...document.querySelectorAll('.tile')].map(t => t.querySelector('figcaption').textContent + (t.querySelector('.mic-off') ? '[muted]' : '[live]')).join('|')`);
   ok('mic-off indicator on every tile while muted', (await A.eval(`document.querySelectorAll('.tile .mic-off').length`)) === 2, muteBadges);
   await A.click('Escolher câmera');

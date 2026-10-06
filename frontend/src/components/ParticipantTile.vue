@@ -7,15 +7,11 @@ const props = defineProps<{
   label: string;
   hasVideo: boolean;
   hasAudio: boolean;
-  /** Tile do próprio usuário: sempre mudo (evita eco) e espelhado. */
+  /** Tile do próprio usuário: espelhado. */
   isLocal?: boolean;
   isPresenting?: boolean;
   speaking?: boolean;
-  /** Vira true depois de um gesto do usuário; destrava o áudio dos tiles remotos. */
-  audioUnlocked: boolean;
 }>();
-
-const emit = defineEmits<{ 'autoplay-blocked': [] }>();
 
 const video = ref<HTMLVideoElement | null>(null);
 
@@ -30,28 +26,18 @@ function initials(name: string): string {
   return (first + last).toUpperCase() || '?';
 }
 
+/** Só vídeo: o áudio de todos os remotos é tocado pelo RemoteAudio, mesmo com o tile oculto. */
 async function attach(): Promise<void> {
   const el = video.value;
   if (!el) return;
   if (el.srcObject !== props.stream) el.srcObject = props.stream;
+  el.muted = true;
   if (!props.stream) return;
-  el.muted = props.isLocal === true || !props.audioUnlocked;
-  try {
-    await el.play();
-  } catch {
-    if (el.muted) return;
-    el.muted = true;
-    emit('autoplay-blocked');
-    try {
-      await el.play();
-    } catch {
-      /* sem mídia ainda; tenta de novo na próxima mudança */
-    }
-  }
+  await el.play().catch(() => undefined);
 }
 
 onMounted(() => void attach());
-watch(() => [props.stream, props.audioUnlocked, props.hasVideo, props.hasAudio], () => void attach(), { flush: 'post' });
+watch(() => [props.stream, props.hasVideo], () => void attach(), { flush: 'post' });
 
 onBeforeUnmount(() => {
   if (video.value) video.value.srcObject = null;
@@ -60,7 +46,7 @@ onBeforeUnmount(() => {
 
 <template>
   <figure class="tile" :class="{ mirrored: isLocal, speaking }">
-    <video ref="video" autoplay playsinline :class="{ hidden: !hasVideo }" />
+    <video ref="video" autoplay playsinline muted :class="{ hidden: !hasVideo }" />
     <div v-if="!hasVideo" class="placeholder" aria-hidden="true">
       <span class="avatar">{{ initials(label) }}</span>
     </div>
