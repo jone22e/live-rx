@@ -136,7 +136,7 @@ const step = (name: string) => {
 };
 
 async function run(): Promise<void> {
-  const { child, port, url } = await startServer({ MAX_PARTICIPANTS_PER_ROOM: '2', API_TOKEN: 'flexi-secret', PUBLIC_URL: 'https://live.exemplo.com/' });
+  const { child, port, url } = await startServer({ MAX_PARTICIPANTS_PER_ROOM: '2', API_TOKEN: 'flexi-secret', API_RECORDER_TOKEN: 'recorder-secret', PUBLIC_URL: 'https://live.exemplo.com/' });
 
   try {
 
@@ -291,6 +291,49 @@ async function run(): Promise<void> {
     viaToken.close();
     witness.close();
     step('join tokens (issue, public lookup, join by token)');
+
+    // 11. token de gravador (ScreenRx): escopo restrito, participante marcado como gravador, sala "recording"
+    const recAuth = { Authorization: 'Bearer recorder-secret', 'Content-Type': 'application/json' };
+    assert((await fetch(api, { headers: recAuth })).status === 200, 'recorder token can list rooms');
+    assert((await fetch(api, { method: 'POST', headers: recAuth, body: '{}' })).status === 403, 'recorder token cannot generate codes');
+    assert((await fetch(`${api}/${generated.code}`, { method: 'PATCH', headers: recAuth, body: JSON.stringify({ name: 'x' }) })).status === 403, 'recorder token cannot rename');
+    assert((await fetch(`${api}/${generated.code}`, { method: 'DELETE', headers: { Authorization: recAuth.Authorization } })).status === 403, 'recorder token cannot close');
+    assert((await fetch(`${api}/${generated.code}/join-tokens`, { method: 'POST', headers: recAuth, body: JSON.stringify({ name: 'Pessoa' }) })).status === 403, 'recorder token cannot issue person tokens');
+    const recIssued = (await (await fetch(`${api}/${generated.code}/join-tokens`, { method: 'POST', headers: recAuth, body: JSON.stringify({ name: 'Gravação ScreenRx', recorder: true }) })).json()) as { token: string; recorder: boolean };
+    assert(recIssued.recorder === true, 'recorder token issues a recorder join token');
+    const recLookup = (await (await fetch(`http://127.0.0.1:${port}/api/public/rooms/${generated.code}/join-tokens/${recIssued.token}`)).json()) as { name: string; recorder: boolean };
+    assert(recLookup.recorder === true && recLookup.name === 'Gravação ScreenRx', 'public lookup reports recorder tokens');
+    const person = await Client.connect(url);
+    person.send({ type: 'join-room', roomId: generated.code, displayName: 'Pessoa' });
+    await person.expect('room-joined');
+    const before = (await (await fetch(`${api}/${generated.code}`, { headers: recAuth })).json()) as { recording: boolean; participantCount: number };
+    assert(before.recording === false && before.participantCount === 1, 'room not recording before the recorder joins');
+    const recorder = await Client.connect(url);
+    recorder.send({ type: 'join-room', roomId: generated.code, joinToken: recIssued.token });
+    const recJoined = await recorder.expect('room-joined');
+    assert(recJoined.participants.length === 1 && recJoined.participants[0]?.recorder === undefined, 'recorder sees the person as a regular participant');
+    const seenRecorder = await person.expect('participant-joined');
+    assert(seenRecorder.recorder === true && seenRecorder.name === 'Gravação ScreenRx', 'person is told the newcomer is a recorder');
+    const during = (await (await fetch(`${api}/${generated.code}`, { headers: recAuth })).json()) as { recording: boolean; participantCount: number; participants: Array<{ name: string }> };
+    assert(during.recording === true && during.participantCount === 1 && during.participants.every((p) => p.name === 'Pessoa'), 'room reports recording and does not count the recorder as a person');
+    // A sala do teste aceita 2 conexões: a pessoa sai para o atrasado entrar com o gravador ainda dentro.
+    person.send({ type: 'leave' });
+    await recorder.expect('participant-left');
+    const late = await Client.connect(url);
+    late.send({ type: 'join-room', roomId: generated.code, displayName: 'Atrasado' });
+    const lateJoined = await late.expect('room-joined');
+    assert(lateJoined.participants.length === 1 && lateJoined.participants[0]?.recorder === true, 'late joiner learns about the recorder in the room');
+    recorder.send({ type: 'leave' });
+    await late.expect('participant-left');
+    const after = (await (await fetch(`${api}/${generated.code}`, { headers: recAuth })).json()) as { recording: boolean };
+    assert(after.recording === false, 'recording flag clears when the recorder leaves');
+    const strict = { Authorization: 'Bearer flexi-secret' };
+    assert((await fetch(`${api}/${generated.code}`, { headers: strict })).status === 200, 'full token still works alongside the recorder token');
+    late.send({ type: 'leave' });
+    person.close();
+    late.close();
+    recorder.close();
+    step('recorder tokens (restricted scope, recorder participant, recording flag)');
 
     await new Promise((r) => setTimeout(r, GRACE_MS + 300));
     const finalHealth = (await (await fetch(`http://127.0.0.1:${port}/health`)).json()) as { rooms: number; participants: number; sfu: boolean };

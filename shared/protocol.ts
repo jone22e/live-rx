@@ -60,6 +60,8 @@ export const DEFAULT_ROOM_NAME = 'Reunião';
 export interface Participant {
   peerId: string;
   name: string;
+  /** Participante que só grava a reunião (entrou com token de gravador): sem câmera nem microfone. */
+  recorder?: boolean;
 }
 
 /**
@@ -86,7 +88,7 @@ export type ServerMessage =
       iceServers: IceServer[];
     }
   /** Enviado a todos os outros membros da sala. */
-  | { type: 'participant-joined'; peerId: string; name: string; participantCount: number }
+  | { type: 'participant-joined'; peerId: string; name: string; participantCount: number; recorder?: boolean }
   | { type: 'participant-left'; peerId: string; participantCount: number }
   | { type: 'sfu-response'; requestId: string; ok: true; data: unknown }
   | { type: 'sfu-response'; requestId: string; ok: false; error: string }

@@ -8,6 +8,8 @@ const props = defineProps<{
   badgeLabel: string;
   badgeTone: BadgeTone;
   badgePulse: boolean;
+  /** Há um gravador na sala: aviso visível para todos, como no Meet. */
+  recording?: boolean;
 }>();
 
 const elapsed = ref('');
@@ -43,7 +45,10 @@ onBeforeUnmount(() => {
       <h1>{{ roomName }}</h1>
       <span v-if="elapsed" class="elapsed mono">{{ elapsed }}</span>
     </div>
-    <StatusBadge :label="badgeLabel" :tone="badgeTone" :pulse="badgePulse" />
+    <div class="badges">
+      <StatusBadge v-if="recording" label="Gravando" tone="error" :pulse="true" />
+      <StatusBadge :label="badgeLabel" :tone="badgeTone" :pulse="badgePulse" />
+    </div>
   </header>
 </template>
 
@@ -76,6 +81,13 @@ h1 {
 .elapsed {
   font-size: 12.5px;
   color: var(--text-muted);
+}
+
+.badges {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
 }
 
 @media (max-width: 720px) {

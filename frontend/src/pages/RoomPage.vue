@@ -40,6 +40,8 @@ const joinedName = ref('');
 const joinToken = typeof route.query['t'] === 'string' ? route.query['t'] : '';
 const tokenName = ref<string | null>(null);
 const tokenChecked = ref(joinToken === '');
+/** Token de gravador (ex.: ScreenRx): entra direto, sem pré-entrada, câmera ou microfone, e sem barra de controles. */
+const recorderMode = ref(false);
 
 /** Vindo da página inicial: entra direto (nome já informado) e, se criou a sala, abre o painel com o código. */
 interface EntryState {
@@ -55,7 +57,13 @@ const nameOk = computed(() => normalizeDisplayName(displayName.value).length > 0
 /** Decidido antes da primeira renderização, para a pré-entrada não aparecer (nem ligar mídia) de passagem. */
 const autoJoining = entry.autoJoin === true && nameOk.value && isRoomCode(roomCode.value);
 /** Pré-entrada (como no Meet): prévia da câmera, dispositivos e nome antes de conectar. */
-const preJoin = computed(() => session.state.status === 'idle' && !invalidCode.value && !autoJoining);
+/** Enquanto o token do link é consultado, nada de pré-entrada: ela ligaria câmera e microfone, que um gravador não deve ter. */
+const checkingToken = computed(() => joinToken !== '' && !tokenChecked.value && session.state.status === 'idle' && !invalidCode.value);
+const preJoin = computed(() => session.state.status === 'idle' && !invalidCode.value && !autoJoining && !recorderMode.value && !checkingToken.value);
+
+/** Gravadores não são pessoas: ficam fora dos tiles e da contagem, e acendem o aviso "Gravando". */
+const people = computed(() => meeting.state.participants.filter((p) => !p.recorder));
+const recording = computed(() => recorderMode.value || meeting.state.participants.some((p) => p.recorder === true));
 
 const mediaDisabledReason = computed(() => (meeting.state.active ? null : 'Aguardando conexão com a sala.'));
 
@@ -119,19 +127,24 @@ async function resolveToken(): Promise<void> {
   try {
     const res = await fetch(`/api/public/rooms/${encodeURIComponent(roomCode.value)}/join-tokens/${encodeURIComponent(joinToken)}`);
     if (res.ok) {
-      const data = (await res.json()) as { name: string };
+      const data = (await res.json()) as { name: string; recorder?: boolean };
       tokenName.value = data.name;
+      recorderMode.value = data.recorder === true;
     }
   } catch {
     /* sem rede ou servidor fora: segue pedindo o nome */
   } finally {
     tokenChecked.value = true;
   }
+  if (recorderMode.value) join();
 }
 
 /** Token recusado na entrada (venceu entre a consulta e o join): volta a pedir o nome. */
 watch(() => session.state.errorCode, (code) => {
-  if (code === 'invalid-token') tokenName.value = null;
+  if (code === 'invalid-token') {
+    tokenName.value = null;
+    recorderMode.value = false;
+  }
 });
 
 function onPageHide(): void {
@@ -176,7 +189,12 @@ const debugInfo = computed(() => [
 
 <template>
   <div ref="room" class="room">
-    <section v-if="preJoin" class="prejoin">
+    <section v-if="checkingToken" class="prejoin checking">
+      <span class="spinner" />
+      <p class="muted">Verificando o link...</p>
+    </section>
+
+    <section v-else-if="preJoin" class="prejoin">
       <header class="topbar">
         <span class="brand">
           <span class="brand-dot" />
@@ -209,6 +227,7 @@ const debugInfo = computed(() => [
         :badge-label="badge.label"
         :badge-tone="badge.tone"
         :badge-pulse="badge.pulse"
+        :recording="recording"
       />
 
       <RoomStage
@@ -219,7 +238,7 @@ const debugInfo = computed(() => [
         :local-has-audio="meeting.state.micOn"
         :local-label="`${joinedName} (você)`"
         :local-presenting="meeting.state.screenOn"
-        :participants="meeting.state.participants"
+        :participants="people"
         :remotes="meeting.state.remotes"
         :speaking-ids="meeting.state.speaking"
         :active-speaker="meeting.activeSpeaker.value"
@@ -246,6 +265,7 @@ const debugInfo = computed(() => [
       <p v-if="meeting.state.notice" class="toast">{{ meeting.state.notice }}</p>
 
       <RoomToolbar
+        v-if="!recorderMode"
         :code="roomCode"
         :mic-on="meeting.state.micOn"
         :camera-on="meeting.state.cameraOn"
@@ -253,7 +273,7 @@ const debugInfo = computed(() => [
         :screen-supported="meeting.screenSupported"
         :media-busy="meeting.state.busy"
         :media-disabled-reason="mediaDisabledReason"
-        :people-count="meeting.state.participantCount + 1"
+        :people-count="people.length + 1"
         :info-open="infoOpen"
         :needs-unmute="!audioUnlocked"
         :fullscreen-supported="fullscreenSupported"
@@ -290,6 +310,12 @@ const debugInfo = computed(() => [
 .prejoin .topbar {
   border-bottom: none;
   background: transparent;
+}
+
+.prejoin.checking {
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
 }
 
 .prejoin-content {

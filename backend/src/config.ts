@@ -16,6 +16,8 @@ export interface AppConfig {
   allowedOrigins: string[] | null;
   /** Token da API REST de integração (Authorization: Bearer). Sem ele a API fica desabilitada. */
   apiToken: string | null;
+  /** Token restrito a gravadores (ex.: ScreenRx): só lista salas, consulta estado e emite tokens de gravador. */
+  apiRecorderToken: string | null;
   /** URL pública do site (ex.: https://live.exemplo.com) para montar links nas respostas da API. */
   publicUrl: string | null;
   /** Validade padrão dos tokens de entrada emitidos pela API. */
@@ -98,6 +100,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     heartbeatIntervalMs: readInt(env, 'HEARTBEAT_INTERVAL_MS', 25_000),
     allowedOrigins: readOrigins(env),
     apiToken: env.API_TOKEN?.trim() || null,
+    apiRecorderToken: env.API_RECORDER_TOKEN?.trim() || null,
     publicUrl: env.PUBLIC_URL?.trim().replace(/\/+$/, '') || null,
     joinTokenTtlMs: readInt(env, 'JOIN_TOKEN_TTL_MS', 3_600_000),
     sfu: {

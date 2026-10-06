@@ -7,6 +7,7 @@ import type { PeerLike } from '../rooms/room-manager.js';
 export class Peer implements PeerLike {
   id: string = randomUUID();
   name = '';
+  recorder = false;
   roomId: string | null = null;
   /** Usado pelo heartbeat: vira false a cada ping e true a cada pong. */
   alive = true;

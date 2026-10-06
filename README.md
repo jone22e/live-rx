@@ -301,8 +301,8 @@ Habilitada definindo `API_TOKEN` no backend. Toda chamada leva `Authorization: B
 | `GET /api/rooms/{code}`    | Estado ao vivo da sala: participantes (nome, se compartilha tela). `404` se ninguém está nela. |
 | `PATCH /api/rooms/{code}`  | Renomeia uma sala ativa (`{"name": "..."}`); quem está dentro vê o novo nome na hora.        |
 | `DELETE /api/rooms/{code}` | Encerra uma sala ativa; todos recebem "A sala foi encerrada."                               |
-| `POST /api/rooms/{code}/join-tokens` | Emite um token de entrada para um usuário (`{"name": "...", "ttlSeconds"?: 3600}`). Devolve `url` com `?t=` para abrir: a pré-entrada mostra o nome vindo do servidor, sem expô-lo no link. Reutilizável até expirar (padrão 1 h). |
-| `GET /api/public/rooms/{code}/join-tokens/{token}` | Sem token de API; usado pela pré-entrada para descobrir o nome. |
+| `POST /api/rooms/{code}/join-tokens` | Emite um token de entrada para um usuário (`{"name": "...", "ttlSeconds"?: 3600}`). Devolve `url` com `?t=` para abrir: a pré-entrada mostra o nome vindo do servidor, sem expô-lo no link. Reutilizável até expirar (padrão 1 h). Com `"recorder": true` é um token de **gravador**: entra direto sem câmera/microfone, não conta como pessoa e a sala mostra "Gravando". |
+| `GET /api/public/rooms/{code}/join-tokens/{token}` | Sem token de API; usado pela pré-entrada para descobrir o nome (e se é gravador). |
 | `GET /api/docs`            | Documentação da API em HTML, pública.                                                       |
 
 Exemplo:
@@ -320,6 +320,14 @@ gerados pela API, mais difíceis de adivinhar que os de 6 do botão "Criar sala"
 Para entrar com o nome do usuário logado sem colocá-lo no link, emita um token de entrada e abra a `url`
 devolvida. Se o token expirar ou o servidor reiniciar (tokens ficam só em memória), a página volta a pedir o
 nome. A documentação completa, com exemplos, fica em `/api/docs` no próprio servidor.
+
+### Gravação pelo ScreenRx
+
+`API_RECORDER_TOKEN` é um segundo token, opcional e restrito: só `GET /api/rooms`, `GET /api/rooms/{code}` e
+`POST .../join-tokens` com `"recorder": true` (o resto responde `403`). O ScreenRx usa esse token para listar
+as salas ativas e, ao gravar, emite um token de gravador, abre a sala numa janela própria e grava essa janela
+com o áudio. Enquanto o gravador estiver dentro, `GET /api/rooms/{code}` devolve `"recording": true` e todos
+na reunião veem o aviso **Gravando** no cabeçalho.
 
 ## Debug
 

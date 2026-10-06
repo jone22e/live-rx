@@ -3,6 +3,8 @@ import { randomBytes } from 'node:crypto';
 interface JoinTokenRecord {
   roomId: string;
   name: string;
+  /** Token de gravador: quem entra com ele só grava (sem câmera/microfone) e a sala mostra "Gravando". */
+  recorder: boolean;
   expiresAt: number;
 }
 
@@ -10,6 +12,7 @@ export interface JoinTokenInfo {
   token: string;
   roomId: string;
   name: string;
+  recorder: boolean;
   expiresAt: number;
 }
 
@@ -27,11 +30,11 @@ export class JoinTokenStore {
     this.cleaner.unref();
   }
 
-  issue(roomId: string, name: string, ttlMs = this.defaultTtlMs): JoinTokenInfo {
+  issue(roomId: string, name: string, ttlMs = this.defaultTtlMs, recorder = false): JoinTokenInfo {
     const token = randomBytes(24).toString('base64url');
     const expiresAt = Date.now() + ttlMs;
-    this.tokens.set(token, { roomId, name, expiresAt });
-    return { token, roomId, name, expiresAt };
+    this.tokens.set(token, { roomId, name, recorder, expiresAt });
+    return { token, roomId, name, recorder, expiresAt };
   }
 
   /** Token válido para a sala informada (reutilizável até expirar, para suportar reload). */

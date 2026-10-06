@@ -216,7 +216,7 @@ function handleMessage(message: ServerMessage): void {
   if (!state.active) return;
   switch (message.type) {
     case 'participant-joined':
-      upsertParticipant({ peerId: message.peerId, name: message.name });
+      upsertParticipant({ peerId: message.peerId, name: message.name, ...(message.recorder ? { recorder: true } : {}) });
       void network?.addParticipant(message.peerId);
       return;
     case 'participant-left':

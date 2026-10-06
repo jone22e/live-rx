@@ -94,8 +94,10 @@ export function registerSignaling(app: FastifyInstance, deps: SignalingDeps): vo
           const identity = joinTokens.resolve(message.joinToken, message.roomId);
           if (!identity) return sendError(peer, 'invalid-token', 'Link de entrada inválido ou expirado. Informe seu nome para entrar.');
           peer.name = identity.name;
+          peer.recorder = identity.recorder;
         } else if (message.displayName) {
           peer.name = message.displayName;
+          peer.recorder = false;
         } else {
           return sendError(peer, 'invalid-message', 'Nome não informado.');
         }

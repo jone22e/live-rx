@@ -4,6 +4,8 @@ import { DEFAULT_ROOM_NAME, type ErrorCode, type Participant, type ServerMessage
 export interface PeerLike {
   id: string;
   name: string;
+  /** Entrou com token de gravador: aparece para os outros como gravação, não como pessoa. */
+  recorder: boolean;
   roomId: string | null;
   send(message: ServerMessage): void;
 }
@@ -102,7 +104,7 @@ export class RoomManager {
     }
     room.members.set(peer.id, peer);
     peer.roomId = room.id;
-    this.broadcast(room, peer.id, { type: 'participant-joined', peerId: peer.id, name: peer.name, participantCount: room.members.size });
+    this.broadcast(room, peer.id, { type: 'participant-joined', peerId: peer.id, name: peer.name, participantCount: room.members.size, ...(peer.recorder ? { recorder: true } : {}) });
     this.options.log.info({ roomId: room.id, peerId: peer.id, members: room.members.size }, 'participant joined');
     return { ok: true, room };
   }
@@ -126,9 +128,15 @@ export class RoomManager {
   participantsOf(room: Room, exceptPeerId: string): Participant[] {
     const list: Participant[] = [];
     for (const member of room.members.values()) {
-      if (member.id !== exceptPeerId) list.push({ peerId: member.id, name: member.name });
+      if (member.id !== exceptPeerId) list.push({ peerId: member.id, name: member.name, ...(member.recorder ? { recorder: true } : {}) });
     }
     return list;
+  }
+
+  /** Sala com algum gravador dentro (aviso "Gravando" para os participantes e para a API). */
+  isRecording(room: Room): boolean {
+    for (const member of room.members.values()) if (member.recorder) return true;
+    return false;
   }
 
   broadcast(room: Room, exceptPeerId: string, message: ServerMessage): void {
