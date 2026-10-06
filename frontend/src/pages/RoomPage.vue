@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { MAX_DISPLAY_NAME_LENGTH, isRoomCode, normalizeRoomCode } from '../../../shared/protocol';
 import DebugPanel from '../components/DebugPanel.vue';
@@ -36,6 +36,10 @@ const infoOpen = ref(false);
 const invalidCode = ref(false);
 const displayName = ref(getStoredName());
 const joinedName = ref('');
+/** Token de entrada no link (?t=): o nome vem do servidor e não aparece no link. */
+const joinToken = typeof route.query['t'] === 'string' ? route.query['t'] : '';
+const tokenName = ref<string | null>(null);
+const tokenChecked = ref(joinToken === '');
 
 /** Vindo da página inicial: entra direto (nome já informado) e, se criou a sala, abre o painel com o código. */
 interface EntryState {
@@ -96,12 +100,39 @@ const overlay = computed(() => {
 });
 
 function join(): void {
+  const roomName = entry.created ? (entry.roomName ?? '') : '';
+  if (tokenName.value) {
+    joinedName.value = tokenName.value;
+    void session.join(roomCode.value, { joinToken }, roomName, tokenName.value);
+    return;
+  }
   const name = normalizeDisplayName(displayName.value);
   if (!name) return;
   storeName(name);
   joinedName.value = name;
-  void session.join(roomCode.value, name, entry.created ? (entry.roomName ?? '') : '');
+  void session.join(roomCode.value, { displayName: name }, roomName);
 }
+
+/** Descobre o nome associado ao token antes de mostrar a pré-entrada. Token inválido cai no fluxo normal. */
+async function resolveToken(): Promise<void> {
+  if (!joinToken) return;
+  try {
+    const res = await fetch(`/api/public/rooms/${encodeURIComponent(roomCode.value)}/join-tokens/${encodeURIComponent(joinToken)}`);
+    if (res.ok) {
+      const data = (await res.json()) as { name: string };
+      tokenName.value = data.name;
+    }
+  } catch {
+    /* sem rede ou servidor fora: segue pedindo o nome */
+  } finally {
+    tokenChecked.value = true;
+  }
+}
+
+/** Token recusado na entrada (venceu entre a consulta e o join): volta a pedir o nome. */
+watch(() => session.state.errorCode, (code) => {
+  if (code === 'invalid-token') tokenName.value = null;
+});
 
 function onPageHide(): void {
   session.notifyLeave();
@@ -117,6 +148,7 @@ onMounted(() => {
     return;
   }
   window.addEventListener('pagehide', onPageHide);
+  void resolveToken();
   if (autoJoining) {
     infoOpen.value = entry.created === true;
     join();
@@ -158,11 +190,13 @@ const debugInfo = computed(() => [
         <form class="prejoin-card" @submit.prevent="join">
           <h1>Pronto para participar?</h1>
           <p class="muted">Sala <span class="mono code">{{ roomCode }}</span></p>
-          <label class="field">
+          <p v-if="tokenName" class="identity">Você vai entrar como <strong>{{ tokenName }}</strong></p>
+          <label v-else class="field">
             <span>Seu nome</span>
             <input v-model="displayName" class="input" type="text" autocomplete="name" :maxlength="MAX_DISPLAY_NAME_LENGTH" placeholder="Como os outros vão te ver" />
           </label>
-          <button type="submit" class="btn btn-primary big-btn" :disabled="!nameOk">Participar</button>
+          <p v-if="session.state.errorCode === 'invalid-token'" class="hint error">{{ session.state.message }}</p>
+          <button type="submit" class="btn btn-primary big-btn" :disabled="!tokenChecked || (!tokenName && !nameOk)">Participar</button>
           <button type="button" class="btn btn-ghost" @click="leave">Voltar ao início</button>
         </form>
       </div>
@@ -313,6 +347,28 @@ const debugInfo = computed(() => [
   font-size: 13px;
   font-weight: 600;
   color: var(--text-muted);
+}
+
+.identity {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+}
+
+.identity strong {
+  color: var(--text);
+}
+
+.hint {
+  margin: 0;
+  font-size: 13px;
+}
+
+.hint.error {
+  color: #ff8a8e;
 }
 
 .toast {

@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import type { RawData } from 'ws';
 import { MAX_MESSAGE_BYTES, type ClientMessage, type ErrorCode } from '../../../shared/protocol.js';
 import type { AppConfig } from '../config.js';
+import type { JoinTokenStore } from '../rooms/join-tokens.js';
 import type { RoomManager } from '../rooms/room-manager.js';
 import { SfuError, type SfuService } from '../sfu/sfu-service.js';
 import { Peer } from './peer.js';
@@ -11,6 +12,7 @@ export interface SignalingDeps {
   config: AppConfig;
   rooms: RoomManager;
   sfu: SfuService;
+  joinTokens: JoinTokenStore;
 }
 
 /**
@@ -18,7 +20,7 @@ export interface SignalingDeps {
  * pedidos ao SFU só valem dentro dela.
  */
 export function registerSignaling(app: FastifyInstance, deps: SignalingDeps): void {
-  const { config, rooms, sfu } = deps;
+  const { config, rooms, sfu, joinTokens } = deps;
   const connected = new Set<Peer>();
 
   const heartbeat = setInterval(() => {
@@ -88,7 +90,15 @@ export function registerSignaling(app: FastifyInstance, deps: SignalingDeps): vo
       case 'join-room': {
         if (peer.roomId) return sendError(peer, 'already-in-room', 'Você já está em uma sala.');
         if (!sfu.available) return sendError(peer, 'sfu-unavailable', 'Servidor de mídia indisponível. Tente novamente em instantes.');
-        peer.name = message.displayName;
+        if (message.joinToken !== undefined) {
+          const identity = joinTokens.resolve(message.joinToken, message.roomId);
+          if (!identity) return sendError(peer, 'invalid-token', 'Link de entrada inválido ou expirado. Informe seu nome para entrar.');
+          peer.name = identity.name;
+        } else if (message.displayName) {
+          peer.name = message.displayName;
+        } else {
+          return sendError(peer, 'invalid-message', 'Nome não informado.');
+        }
         const result = rooms.joinRoom(message.roomId, peer, message.roomName);
         if (!result.ok) return sendError(peer, result.code, result.message);
         peer.send({

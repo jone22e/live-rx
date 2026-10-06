@@ -67,11 +67,12 @@ export interface Participant {
  * passa a existir no primeiro join (que pode dar o nome da reunião) e some quando esvazia.
  */
 export type ClientMessage =
-  | { type: 'join-room'; roomId: string; displayName: string; roomName?: string }
+  /** Entra com o nome digitado ou com um token de entrada emitido pela API (o servidor resolve o nome). */
+  | { type: 'join-room'; roomId: string; displayName?: string; joinToken?: string; roomName?: string }
   | { type: 'sfu-request'; requestId: string; request: SfuRequest }
   | { type: 'leave' };
 
-export type ErrorCode = 'invalid-message' | 'room-full' | 'server-full' | 'not-in-room' | 'already-in-room' | 'sfu-unavailable';
+export type ErrorCode = 'invalid-message' | 'invalid-token' | 'room-full' | 'server-full' | 'not-in-room' | 'already-in-room' | 'sfu-unavailable';
 
 /** Mensagens enviadas pelo servidor ao navegador. */
 export type ServerMessage =

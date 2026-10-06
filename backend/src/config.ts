@@ -18,6 +18,8 @@ export interface AppConfig {
   apiToken: string | null;
   /** URL pública do site (ex.: https://live.exemplo.com) para montar links nas respostas da API. */
   publicUrl: string | null;
+  /** Validade padrão dos tokens de entrada emitidos pela API. */
+  joinTokenTtlMs: number;
   sfu: {
     listenIp: string;
     /** IP anunciado aos navegadores: MEDIASOUP_ANNOUNCED_IP (obrigatório atrás de NAT/Docker) ou o IP da máquina. */
@@ -97,6 +99,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     allowedOrigins: readOrigins(env),
     apiToken: env.API_TOKEN?.trim() || null,
     publicUrl: env.PUBLIC_URL?.trim().replace(/\/+$/, '') || null,
+    joinTokenTtlMs: readInt(env, 'JOIN_TOKEN_TTL_MS', 3_600_000),
     sfu: {
       listenIp: env.MEDIASOUP_LISTEN_IP?.trim() || '0.0.0.0',
       announcedIp: env.MEDIASOUP_ANNOUNCED_IP?.trim() || detectLocalIp(),

@@ -266,6 +266,32 @@ async function run(): Promise<void> {
     member.close();
     step('integration api (token, generate, status, rename, close)');
 
+    // 10. token de entrada: nome vem do servidor, não do link
+    const issued = (await (await fetch(`${api}/${generated.code}/join-tokens`, { method: 'POST', headers: auth, body: JSON.stringify({ name: ' Usuária  do Flexi ' }) })).json()) as { token: string; name: string; url: string };
+    assert(issued.name === 'Usuária do Flexi' && issued.url === `https://live.exemplo.com/live/${generated.code}?t=${encodeURIComponent(issued.token)}` && !issued.url.includes('Flexi'), 'join token issued with url without the name');
+    assert((await fetch(`${api}/${generated.code}/join-tokens`, { method: 'POST', headers: auth, body: JSON.stringify({}) })).status === 400, 'join token requires name');
+    const lookup = (await (await fetch(`http://127.0.0.1:${port}/api/public/rooms/${generated.code}/join-tokens/${issued.token}`)).json()) as { name: string };
+    assert(lookup.name === 'Usuária do Flexi', 'public lookup resolves the name without api token');
+    assert((await fetch(`http://127.0.0.1:${port}/api/public/rooms/${generated.code}/join-tokens/nope`)).status === 404, 'unknown token reports 404');
+    assert((await fetch(`http://127.0.0.1:${port}/api/public/rooms/ZZZZZZ/join-tokens/${issued.token}`)).status === 404, 'token is bound to its room');
+    const viaToken = await Client.connect(url);
+    viaToken.send({ type: 'join-room', roomId: generated.code, joinToken: 'wrong' });
+    assert((await viaToken.expect('error')).code === 'invalid-token', 'wrong join token rejected with invalid-token');
+    viaToken.send({ type: 'join-room', roomId: generated.code } as never);
+    assert((await viaToken.expect('error')).code === 'invalid-message', 'join without name nor token rejected');
+    viaToken.send({ type: 'join-room', roomId: generated.code, joinToken: issued.token });
+    await viaToken.expect('room-joined');
+    const witness = await Client.connect(url);
+    witness.send({ type: 'join-room', roomId: generated.code, displayName: 'Testemunha' });
+    const seen = await witness.expect('room-joined');
+    assert(seen.participants[0]?.name === 'Usuária do Flexi', 'participant joined by token carries the issued name');
+    assert((await viaToken.expect('participant-joined')).name === 'Testemunha', 'token participant sees the witness join');
+    viaToken.send({ type: 'leave' });
+    witness.send({ type: 'leave' });
+    viaToken.close();
+    witness.close();
+    step('join tokens (issue, public lookup, join by token)');
+
     await new Promise((r) => setTimeout(r, GRACE_MS + 300));
     const finalHealth = (await (await fetch(`http://127.0.0.1:${port}/health`)).json()) as { rooms: number; participants: number; sfu: boolean };
     assert(finalHealth.rooms === 0 && finalHealth.participants === 0 && finalHealth.sfu === true, 'no leaked rooms, sfu worker alive');

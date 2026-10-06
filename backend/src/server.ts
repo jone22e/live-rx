@@ -5,6 +5,7 @@ import { loadConfig } from './config.js';
 import { RoomManager } from './rooms/room-manager.js';
 import { SfuService } from './sfu/sfu-service.js';
 import { registerRoomsApi } from './api/rooms-api.js';
+import { JoinTokenStore } from './rooms/join-tokens.js';
 import { registerSignaling } from './websocket/handler.js';
 
 async function main(): Promise<void> {
@@ -35,13 +36,15 @@ async function main(): Promise<void> {
     uptimeSeconds: Math.round(process.uptime()),
   }));
 
-  registerSignaling(app, { config, rooms, sfu });
-  registerRoomsApi(app, { config, rooms, sfu });
+  const joinTokens = new JoinTokenStore(config.joinTokenTtlMs);
+  registerSignaling(app, { config, rooms, sfu, joinTokens });
+  registerRoomsApi(app, { config, rooms, sfu, joinTokens });
   app.log.info({ api: config.apiToken ? 'enabled' : 'disabled (API_TOKEN not set)' }, 'rooms api');
 
   const shutdown = async (signal: string): Promise<void> => {
     app.log.info({ signal }, 'shutting down');
     rooms.closeAll();
+    joinTokens.stop();
     await sfu.stop();
     await app.close();
     process.exit(0);

@@ -1,6 +1,7 @@
 import { isRoomCode, MAX_DISPLAY_NAME_LENGTH, MAX_ROOM_NAME_LENGTH, MEDIA_PURPOSES, type ClientMessage, type MediaPurpose, type SfuRequest } from '../../../shared/protocol.js';
 
 const MAX_ID_LENGTH = 64;
+const MAX_TOKEN_LENGTH = 128;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -75,10 +76,17 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       return { type: 'leave' };
     case 'join-room': {
       const roomId = data['roomId'];
-      const displayName = pickDisplayName(data['displayName']);
       const roomName = pickRoomName(data['roomName']);
-      if (!isRoomCode(roomId) || !displayName || roomName === null) return null;
-      return roomName === undefined || roomName === '' ? { type: 'join-room', roomId, displayName } : { type: 'join-room', roomId, displayName, roomName };
+      if (!isRoomCode(roomId) || roomName === null) return null;
+      const joinToken = data['joinToken'];
+      const displayName = joinToken === undefined ? pickDisplayName(data['displayName']) : null;
+      if (joinToken !== undefined && !isShortString(joinToken, MAX_TOKEN_LENGTH)) return null;
+      if (joinToken === undefined && !displayName) return null;
+      const message: ClientMessage = { type: 'join-room', roomId };
+      if (typeof joinToken === 'string') message.joinToken = joinToken;
+      else if (displayName) message.displayName = displayName;
+      if (roomName) message.roomName = roomName;
+      return message;
     }
     case 'sfu-request': {
       const requestId = data['requestId'];

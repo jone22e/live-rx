@@ -226,7 +226,8 @@ docker compose up -d --build
    pronto para Nginx (o essencial é o upgrade de WebSocket em `/ws` e timeouts longos).
 5. Se usar Cloudflare como proxy do domínio: o tráfego HTTP/WebSocket passa por ele normalmente, mas a
    mídia **não**. `MEDIASOUP_ANNOUNCED_IP` deve ser um endereço que receba UDP/TCP direto, nunca o do Cloudflare.
-6. Atualizações: `git pull && docker compose up -d --build`. Logs: `docker compose logs -f backend`.
+6. Atualizações: `make update` (faz `git pull`, recria os containers e confere o `/health`). Outros atalhos:
+   `make logs`, `make status`, `make down`.
 
 A URL para o Flexi é a do domínio, por exemplo `https://live.exemplo.com/live/{código}`; a API fica em
 `https://live.exemplo.com/api/rooms` com o `API_TOKEN` do `.env`.
@@ -300,6 +301,9 @@ Habilitada definindo `API_TOKEN` no backend. Toda chamada leva `Authorization: B
 | `GET /api/rooms/{code}`    | Estado ao vivo da sala: participantes (nome, se compartilha tela). `404` se ninguém está nela. |
 | `PATCH /api/rooms/{code}`  | Renomeia uma sala ativa (`{"name": "..."}`); quem está dentro vê o novo nome na hora.        |
 | `DELETE /api/rooms/{code}` | Encerra uma sala ativa; todos recebem "A sala foi encerrada."                               |
+| `POST /api/rooms/{code}/join-tokens` | Emite um token de entrada para um usuário (`{"name": "...", "ttlSeconds"?: 3600}`). Devolve `url` com `?t=` para abrir: a pré-entrada mostra o nome vindo do servidor, sem expô-lo no link. Reutilizável até expirar (padrão 1 h). |
+| `GET /api/public/rooms/{code}/join-tokens/{token}` | Sem token de API; usado pela pré-entrada para descobrir o nome. |
+| `GET /api/docs`            | Documentação da API em HTML, pública.                                                       |
 
 Exemplo:
 
@@ -312,6 +316,10 @@ curl -s -X POST -H "Authorization: Bearer $API_TOKEN" -H "Content-Type: applicat
 Como as salas são abertas, o Flexi só precisa guardar o código e montar o link `/live/{code}`; a sala
 nasce quando a primeira pessoa entra. Para salas fixas de uso interno, prefira os códigos de 10 caracteres
 gerados pela API, mais difíceis de adivinhar que os de 6 do botão "Criar sala".
+
+Para entrar com o nome do usuário logado sem colocá-lo no link, emita um token de entrada e abra a `url`
+devolvida. Se o token expirar ou o servidor reiniciar (tokens ficam só em memória), a página volta a pedir o
+nome. A documentação completa, com exemplos, fica em `/api/docs` no próprio servidor.
 
 ## Debug
 
@@ -330,6 +338,7 @@ lidos de `RTCPeerConnection.getStats()` a cada segundo.
 | `npm run typecheck`       | `tsc --noEmit` no backend e `vue-tsc` no frontend   |
 | `npm run test:signaling`  | teste de integração do signaling                    |
 | `npm run test:e2e`        | teste de ponta a ponta no Chrome (requer `npm run dev`) |
+| `make update`             | no servidor: `git pull` + `docker compose up -d --build` + health |
 
 ## Fora do escopo deste MVP
 

@@ -14,6 +14,7 @@ const HEALTH = process.env.HEALTH_URL ?? `${BASE}/health`;
 const SHOTS = process.env.SCREENSHOT_DIR ?? null;
 const health0 = await (await fetch(HEALTH)).json();
 if (!health0.sfu) throw new Error('backend sem worker do SFU (mediasoup)');
+const API_TOKEN = process.env.API_TOKEN ?? 'dev-token';
 const chrome = await launchChrome();
 const results = [];
 const ok = (name, cond, extra = '') => { results.push(`${cond ? 'ok  ' : 'FAIL'} ${name} ${extra}`); if (!cond) throw new Error(`FAIL ${name} ${extra}`); };
@@ -152,6 +153,32 @@ try {
   ok('everyone connected to the media server (recv transport)', true);
   await C.waitFor(`/:-a-/.test(${remotesLine})`, 15000, 'viewer2 gets viewer1 mic');
   ok('third participant gets Bruno audio', true);
+
+  // --- documentação e token de entrada emitido pela API (nome fora do link) ---
+  const docs = await fetch(`${BASE}/api/docs`);
+  ok('api docs page is public and mentions join tokens', docs.status === 200 && (await docs.text()).includes('join-tokens'));
+  const issued = await (await fetch(`${BASE}/api/rooms/${code}/join-tokens`, { method: 'POST', headers: { Authorization: `Bearer ${API_TOKEN}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'Usuário Flexi' }) })).json();
+  ok('join token issued without the name in the url', typeof issued.token === 'string' && !issued.url.includes('Flexi'), issued.url);
+  const D = await Page.open(`${BASE}/`);
+  await D.eval(`localStorage.removeItem('screen-live:display-name')`);
+  await D.navigate(`${BASE}/live/${code}?t=${encodeURIComponent(issued.token)}`);
+  await D.waitFor(`document.querySelector('.prejoin-card .identity')?.textContent.includes('Usuário Flexi')`, 10000, 'prejoin shows token name');
+  ok('prejoin shows the name resolved from the token (no input)', (await D.eval(`!!document.querySelector('.prejoin-card .identity') && !document.querySelector('.prejoin-card input')`)) === true);
+  if (SHOTS) await D.screenshot(`${SHOTS}/prejoin-token.png`);
+  await turnOffPreJoinMedia(D);
+  await D.click('Participar');
+  await D.waitFor(`document.querySelector('.badge')?.textContent.trim() === 'Ao vivo'`, 20000, 'token user live');
+  await A.waitFor(`${captions}.includes('Usuário Flexi')`, 10000, 'others see the token user name');
+  ok('others see the token user with the issued name', true);
+  ok('token user sees own name', (await D.eval(captions)).includes('Usuário Flexi (você)'));
+  await D.closeTab();
+  await A.waitFor(`!${captions}.includes('Usuário Flexi')`, 10000, 'token user left');
+  const E = await Page.open(`${BASE}/`);
+  await E.eval(`localStorage.removeItem('screen-live:display-name')`);
+  await E.navigate(`${BASE}/live/${code}?t=token-invalido`);
+  await E.waitFor(`!!document.querySelector('.prejoin-card input')`, 10000, 'invalid token falls back to name input');
+  ok('invalid token falls back to asking the name', true);
+  await E.closeTab();
   if (SHOTS) await C.screenshot(`${SHOTS}/viewer2.png`);
 
   // --- outro participante apresenta: vira a apresentação ativa para todos ---
