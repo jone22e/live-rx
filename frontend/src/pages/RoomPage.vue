@@ -15,6 +15,7 @@ import { useMeeting } from '../composables/useMeeting';
 import { useRtcStats } from '../composables/useRtcStats';
 import { useRoomSession } from '../composables/useRoomSession';
 import { buildShareUrl } from '../services/config';
+import { isRecorderAudioBridgeAvailable, RecorderAudioCapture } from '../services/recorder-audio';
 import { getStoredName, normalizeDisplayName, storeName } from '../services/profile';
 
 const props = defineProps<{ code: string }>();
@@ -147,6 +148,24 @@ watch(() => session.state.errorCode, (code) => {
   }
 });
 
+/**
+ * Dentro do ScreenRx (modo gravador): o áudio de todos os participantes é mixado e entregue ao app pela
+ * ponte `screenrxMeetAudio`, que o grava junto com a tela. Fora dele (ou sem a ponte) nada acontece.
+ */
+let audioCapture: RecorderAudioCapture | null = null;
+watch(
+  () => [recorderMode.value, session.state.status, meeting.state.remotes] as const,
+  ([isRecorder, status, remotes]) => {
+    const bridge = window.screenrxMeetAudio;
+    if (!isRecorder || !bridge || !isRecorderAudioBridgeAvailable()) return;
+    if (status !== 'live') return;
+    audioCapture ??= new RecorderAudioCapture(bridge);
+    if (!audioCapture.running) audioCapture.start();
+    audioCapture.setTracks(remotes.flatMap((r) => [...r.camera.getAudioTracks(), ...r.screen.getAudioTracks()]));
+  },
+  { immediate: true },
+);
+
 function onPageHide(): void {
   session.notifyLeave();
 }
@@ -169,6 +188,7 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  void audioCapture?.stop();
   window.removeEventListener('pagehide', onPageHide);
   session.leave();
   meeting.stopLocalMedia();
@@ -238,6 +258,7 @@ const debugInfo = computed(() => [
         :local-has-audio="meeting.state.micOn"
         :local-label="`${joinedName} (você)`"
         :local-presenting="meeting.state.screenOn"
+        :local-hidden="recorderMode"
         :participants="people"
         :remotes="meeting.state.remotes"
         :speaking-ids="meeting.state.speaking"

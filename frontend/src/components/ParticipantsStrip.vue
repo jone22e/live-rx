@@ -10,6 +10,8 @@ const props = defineProps<{
   localHasAudio: boolean;
   localLabel: string;
   localPresenting: boolean;
+  /** Sem tile deste participante (um gravador não é pessoa e não deve aparecer na gravação). */
+  localHidden?: boolean;
   participants: Participant[];
   remotes: RemoteMedia[];
   /** Ids falando agora ('me' = este participante). */
@@ -63,7 +65,7 @@ const tiles = computed<TileModel[]>(() => {
     speaking: props.speakingIds.includes(LOCAL_ID),
     isLocal: true,
   };
-  return [...remote, local];
+  return props.localHidden ? remote : [...remote, local];
 });
 
 /* ---------- medida do container (sem rolagem: o que não cabe vira "+N") ---------- */

@@ -14,6 +14,7 @@ const props = defineProps<{
   localHasAudio: boolean;
   localLabel: string;
   localPresenting: boolean;
+  localHidden?: boolean;
   participants: Participant[];
   remotes: RemoteMedia[];
   speakingIds: string[];
@@ -60,6 +61,7 @@ defineExpose({ videoElement: video });
         :local-has-audio="localHasAudio"
         :local-label="localLabel"
         :local-presenting="localPresenting"
+        :local-hidden="localHidden"
         :participants="participants"
         :remotes="remotes"
         :speaking-ids="speakingIds"
@@ -79,6 +81,7 @@ defineExpose({ videoElement: video });
         :local-has-audio="localHasAudio"
         :local-label="localLabel"
         :local-presenting="localPresenting"
+        :local-hidden="localHidden"
         :participants="participants"
         :remotes="remotes"
         :speaking-ids="speakingIds"

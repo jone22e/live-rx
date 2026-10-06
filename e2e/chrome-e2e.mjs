@@ -15,6 +15,7 @@ const SHOTS = process.env.SCREENSHOT_DIR ?? null;
 const health0 = await (await fetch(HEALTH)).json();
 if (!health0.sfu) throw new Error('backend sem worker do SFU (mediasoup)');
 const API_TOKEN = process.env.API_TOKEN ?? 'dev-token';
+const RECORDER_TOKEN = process.env.API_RECORDER_TOKEN ?? 'dev-recorder-token';
 const chrome = await launchChrome();
 const results = [];
 const ok = (name, cond, extra = '') => { results.push(`${cond ? 'ok  ' : 'FAIL'} ${name} ${extra}`); if (!cond) throw new Error(`FAIL ${name} ${extra}`); };
@@ -179,6 +180,34 @@ try {
   await E.waitFor(`!!document.querySelector('.prejoin-card input')`, 10000, 'invalid token falls back to name input');
   ok('invalid token falls back to asking the name', true);
   await E.closeTab();
+
+  // --- token de gravador (ScreenRx): entra direto sem pré-entrada nem mídia; os outros veem "Gravando" ---
+  const recAuth = { Authorization: `Bearer ${RECORDER_TOKEN}`, 'Content-Type': 'application/json' };
+  const recIssued = await (await fetch(`${BASE}/api/rooms/${code}/join-tokens`, { method: 'POST', headers: recAuth, body: JSON.stringify({ name: 'Gravação ScreenRx', recorder: true }) })).json();
+  ok('recorder token issued with the restricted token', recIssued.recorder === true && typeof recIssued.url === 'string', JSON.stringify(recIssued).slice(0, 80));
+  const peopleBefore = await A.eval(people);
+  const R = await Page.open(`${BASE}/`);
+  await R.eval(`localStorage.removeItem('screen-live:display-name')`);
+  await R.navigate(`${BASE}/live/${code}?t=${encodeURIComponent(recIssued.token)}`);
+  await R.waitFor(`document.querySelector('.badge')?.textContent.trim() === 'Ao vivo' || [...document.querySelectorAll('.badge')].some(b => b.textContent.trim() === 'Ao vivo')`, 20000, 'recorder live');
+  ok('recorder joins without the prejoin screen', (await R.eval(`!document.querySelector('.prejoin-card')`)) === true);
+  ok('recorder page has no toolbar and no local media', (await R.eval(`!document.querySelector('.toolbar') && !${hasBtn('Desligar microfone')} && !${hasBtn('Desligar câmera')}`)) === true);
+  ok('recorder page has no tile of its own', !(await R.eval(captions)).includes('(você)'), await R.eval(captions));
+  ok('recorder page shows the Gravando badge', (await R.eval(`[...document.querySelectorAll('.badge')].some(b => b.textContent.trim() === 'Gravando')`)) === true);
+  await A.waitFor(`[...document.querySelectorAll('.badge')].some(b => b.textContent.trim() === 'Gravando')`, 10000, 'host sees Gravando');
+  ok('host sees the Gravando badge while the recorder is in', true);
+  await C.waitFor(`[...document.querySelectorAll('.badge')].some(b => b.textContent.trim() === 'Gravando')`, 10000, 'viewer2 sees Gravando');
+  ok('recorder is not a tile for the others', !(await A.eval(captions)).includes('Gravação'));
+  ok('people count ignores the recorder', (await A.eval(people)) === peopleBefore, `${peopleBefore} → ${await A.eval(people)}`);
+  await R.waitFor(`${tilesWithVideo} >= 1`, 20000, 'recorder receives video');
+  ok('recorder receives the participants video', true);
+  const recStatus = await (await fetch(`${BASE}/api/rooms/${code}`, { headers: recAuth })).json();
+  ok('api reports the room as recording', recStatus.recording === true && recStatus.participants.every((p) => p.name !== 'Gravação ScreenRx'));
+  if (SHOTS) await A.screenshot(`${SHOTS}/host-recording.png`);
+  if (SHOTS) await R.screenshot(`${SHOTS}/recorder.png`);
+  await R.closeTab();
+  await A.waitFor(`![...document.querySelectorAll('.badge')].some(b => b.textContent.trim() === 'Gravando')`, 10000, 'Gravando cleared');
+  ok('Gravando badge clears when the recorder leaves', true);
   if (SHOTS) await C.screenshot(`${SHOTS}/viewer2.png`);
 
   // --- outro participante apresenta: vira a apresentação ativa para todos ---
